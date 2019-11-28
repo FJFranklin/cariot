@@ -4,12 +4,20 @@ static void s_enc_1_ch_A();
 static void s_enc_1_ch_B();
 static void s_enc_2_ch_A();
 static void s_enc_2_ch_B();
+static void s_enc_3_ch_A();
+static void s_enc_3_ch_B();
+static void s_enc_4_ch_A();
+static void s_enc_4_ch_B();
 
 static float s_enc_1_sync(unsigned long & last_elapsed, unsigned long & last_count);
 static float s_enc_2_sync(unsigned long & last_elapsed, unsigned long & last_count);
+static float s_enc_3_sync(unsigned long & last_elapsed, unsigned long & last_count);
+static float s_enc_4_sync(unsigned long & last_elapsed, unsigned long & last_count);
 
 Encoder E1(s_enc_1_ch_A, s_enc_1_ch_B, s_enc_1_sync);
 Encoder E2(s_enc_2_ch_A, s_enc_2_ch_B, s_enc_2_sync);
+Encoder E3(s_enc_3_ch_A, s_enc_3_ch_B, s_enc_3_sync);
+Encoder E4(s_enc_4_ch_A, s_enc_4_ch_B, s_enc_4_sync);
 
 void Encoder::init(int pin_A, int pin_B, unsigned ppr, bool clockwise) {
   cpr = 4 * (float) ppr;
@@ -109,4 +117,66 @@ static float s_enc_2_sync(unsigned long & last_delta, unsigned long & last_count
   s_enc_2_count = 0;
 
   return s_enc_2_sense;
+}
+
+volatile static unsigned long s_enc_3_count = 0;
+volatile static unsigned long s_enc_3_delta = 0;
+volatile static float         s_enc_3_sense = 1;
+
+static void s_enc_3_ch_A() {
+  s_enc_3_delta = E3.timer;
+  E3.timer = 0;
+
+  s_enc_3_sense = ((digitalRead(E3.ch_A_pin) == digitalRead(E3.ch_B_pin)) ? 1 : -1);
+
+  ++s_enc_3_count;
+}
+
+static void s_enc_3_ch_B() {
+  s_enc_3_delta = E3.timer;
+  E3.timer = 0;
+
+  s_enc_3_sense = ((digitalRead(E3.ch_A_pin) != digitalRead(E3.ch_B_pin)) ? 1 : -1);
+
+  ++s_enc_3_count;
+}
+
+static float s_enc_3_sync(unsigned long & last_delta, unsigned long & last_count) {
+  last_count = s_enc_3_count;
+  last_delta = s_enc_3_delta;
+
+  s_enc_3_count = 0;
+
+  return s_enc_3_sense;
+}
+
+volatile static unsigned long s_enc_4_count = 0;
+volatile static unsigned long s_enc_4_delta = 0;
+volatile static float         s_enc_4_sense = 1;
+
+static void s_enc_4_ch_A() {
+  s_enc_4_delta = E4.timer;
+  E4.timer = 0;
+
+  s_enc_4_sense = ((digitalRead(E4.ch_A_pin) == digitalRead(E4.ch_B_pin)) ? 1 : -1);
+
+  ++s_enc_4_count;
+}
+
+static void s_enc_4_ch_B() {
+  s_enc_4_delta = E4.timer;
+  E4.timer = 0;
+
+  s_enc_4_sense = ((digitalRead(E4.ch_A_pin) != digitalRead(E4.ch_B_pin)) ? 1 : -1);
+
+  ++s_enc_4_count;
+}
+
+static float s_enc_4_sync(unsigned long & last_delta, unsigned long & last_count) {
+  last_count = s_enc_4_count;
+  last_delta = s_enc_4_delta;
+
+  s_enc_4_count = 0;
+
+  return s_enc_4_sense;
 }

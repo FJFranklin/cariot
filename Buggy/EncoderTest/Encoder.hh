@@ -36,3 +36,5 @@ public:
 
 extern Encoder E1;
 extern Encoder E2;
+extern Encoder E3;
+extern Encoder E4;

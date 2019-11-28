@@ -3,8 +3,8 @@
 
 unsigned long previous_time = 0;
 
-int E1_ChA = 4; // yellow
-int E1_ChB = 3; // pink
+int E1_ChA = 4; // yellow is /A
+int E1_ChB = 3; // pink   is /B
 int E1_ppr = 1024;
 
 void setup() {
