@@ -12,8 +12,6 @@ class Adafruit_BluefruitLE_SPI;
 
 class BTCommander : public Commander {
 private:
-  char m_buffer[1024];
-
   Adafruit_BluefruitLE_SPI * m_ble;
 
   bool m_bConnected;
@@ -35,7 +33,7 @@ private:
 public:
   bool print(const char * str, bool add_eol=false);
 private:
-  int get_bytes();
+  bool get_bytes();
 public:
   virtual void update();
 };

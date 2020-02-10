@@ -46,16 +46,16 @@ bool BTCommander::check_connection() {
 #ifdef FEATHER_M0_BTLE
   if (m_ble->isConnected()) {
     if (!m_bConnected) {
+      m_bConnected = true;
       notify("bluetooth: connect");
+      m_ble->sendCommandCheckOK("AT+HWModeLED=DISABLE");
     }
-    m_bConnected = true;
-    m_ble->sendCommandCheckOK("AT+HWModeLED=DISABLE");
   } else {
     if (m_bConnected) {
+      m_bConnected = false;
       notify("bluetooth: disconnect");
+      m_ble->sendCommandCheckOK("AT+HWModeLED=MODE");
     }
-    m_bConnected = false;
-    m_ble->sendCommandCheckOK("AT+HWModeLED=MODE");
   }
 #endif
   return m_bConnected;
@@ -87,42 +87,44 @@ bool BTCommander::print(const char * str, bool add_eol) {
       m_ble->print("\\n");
     }
     m_ble->println();
-
+    if (!m_ble->waitForOK()) {
+      notify("print: wait - error!");
+    }
     return true;
   }
 #endif
   return false;
 }
 
-int BTCommander::get_bytes() {
-  int count = 0;
+bool BTCommander::get_bytes() {
+  bool have_input = false;
 #ifdef FEATHER_M0_BTLE
+  int count = 0;
+
   if (check_connection()) {
     m_ble->println("AT+BLEUARTFIFO=RX");
 
     long bytes = m_ble->readline_parseInt();
 
-    if (bytes > 1023) // limit is 1024
-      count = 0;
-    else {
+    if (bytes < 1024) { // limit is 1024
       count = 1023 - (int) bytes;
+    }
+    if (!m_ble->waitForOK()) {
+      notify("get_bytes: wait - error!");
+      count = 0;
     }
   }
   if (count) {
     m_ble->println("AT+BLEUARTRX");
 
-    count = m_ble->readline(m_buffer, 1023, true);
-    m_buffer[count] = 0;
-
-    if (strcmp(m_buffer, "OK")) {
-      m_ble->waitForOK();
+    if (!m_ble->waitForOK()) {
+      notify("get_bytes: wait - error!");
     } else {
-      count = 0;
-      m_buffer[0] = 0;
+      have_input = true;
     }
   }
 #endif
-  return count;
+  return have_input;
 }
 
 static BTCommander * s_bt = 0; // single global instance - if any
@@ -154,7 +156,7 @@ const char * BTCommander::name() const {
 
 void BTCommander::update() {
   while (get_bytes()) {
-    const char * ptr = m_buffer;
+    const char * ptr = m_ble->buffer;
 
     while (*ptr) {
       push(*ptr++);
