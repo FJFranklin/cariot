@@ -4,8 +4,15 @@
 #include "config.hh"
 #include "Timer.hh"
 #include "BTCommander.hh"
+#include "LoRaCommander.hh"
 #include "SerialCommander.hh"
 #include "Encoders.hh"
+
+#ifdef ENABLE_JOYWING
+#include "Joy.hh"
+#else
+class Joy;
+#endif
 
 #ifdef ENABLE_ROBOCLAW
 #include <RoboClaw.h>
@@ -68,12 +75,19 @@ class Buggy : public Timer, public Commander::Responder {
 private:
   SerialCommander s0;
   BTCommander *bt;
+  LoRaCommander *lora;
+  Joy *J;
 
 public:
   Buggy() :
     s0(Serial, '0', this),
-    bt(BTCommander::commander(this)) // zero if no bluetooth connection is possible
+    bt(BTCommander::commander(this)), // zero if no Bluetooth connection is possible
+    lora(LoRaCommander::commander(this, LORA_ID_SELF, LORA_ID_PARTNER)), // zero if no LoRa connection is possible
+    J(0)
   {
+#ifdef ENABLE_JOYWING
+    J = Joy::joy();
+#endif
     // ...
   }
   virtual ~Buggy() {
@@ -144,6 +158,10 @@ public:
     if ((M1 != M1_actual) || (M2 != M2_actual)) {
       s_roboclaw_set(M1, M2);
     }
+
+    if (lora) { // important: housekeeping - check for incoming messages
+      lora->update();
+    }
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
@@ -173,15 +191,53 @@ public:
     } else if (bt) { // important: housekeeping
       bt->update();
     }
+    if (lora) { // important: housekeeping
+      lora->update(true); // flush output, if any
+    }
+#ifdef ENABLE_JOYWING
+    J->start(); // start communication sequence
+#endif
   }
 
   virtual void every_second() { // runs once every second
     // ...
+
+    static unsigned long count = 0;
+
+    if (lora) { // important: housekeeping
+      String tick("Tick #");
+      tick += String(++count);
+      lora->print(tick.c_str());
+    }
+  }
+
+  virtual void loop() {
+#ifdef ENABLE_JOYWING
+    if (J->tick()) { // returns true if Joystick communication sequence complete
+      if (J->changes()) {
+        String joy("x=");
+        joy += String(J->x()) + String("; y=") + String(J->y()) + String("; b=");
+        if (J->up())     joy += 'u';
+        if (J->down())   joy += 'd';
+        if (J->left())   joy += 'l';
+        if (J->right())  joy += 'r';
+        if (J->select()) joy += 's';
+        if (Serial) {
+          Serial.println(joy);
+        }
+        if (lora) {
+          lora->print(joy.c_str());
+        }
+      }
+    }
+#endif
   }
 };
 
 void setup() {
-  // while (!Serial);
+  while (millis() < 500) {
+    if (Serial) break;
+  }
   Serial.begin(115200);
 
   pinMode(LED_BUILTIN, OUTPUT);

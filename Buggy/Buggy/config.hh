@@ -8,13 +8,23 @@
 
 #include <Arduino.h>
 
-#define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
-#define ENABLE_BLUETOOTH  // required for Bluetooth; comment to disable
+//#define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
+//#define ENABLE_BLUETOOTH  // required for Bluetooth; comment to disable
+#define ENABLE_LORA       // required for LoRa; comment to disable
+//#define ENABLE_JOYWING    // Feather JoyWing; comment to disable
 
-/* Currently Bluetooth only works for the Feather M0
+#define LORA_ID_SELF    0
+#define LORA_ID_PARTNER 1
+
+/* Currently Bluetooth & LoRa only work for the Feather M0
  */
-#if defined(ADAFRUIT_FEATHER_M0) && defined(ENABLE_BLUETOOTH)
+#if defined(ADAFRUIT_FEATHER_M0)
+#if defined(ENABLE_BLUETOOTH)
 #define FEATHER_M0_BTLE
+#endif
+#if defined(ENABLE_LORA)
+#define FEATHER_M0_LORA
+#endif
 #endif
 
 /* The RoboClaw expects software serial on AVR systems (Uno, etc.)
@@ -30,5 +40,29 @@ static SoftwareSerial * config_serial() {
   return &serial;
 }
 #endif // RoboClaw serial setup
+
+#if !defined(TEENSYDUINO)
+/* elapsedMicros is defined automatically for Teensy; need to define it for Arduino - this is a partial definition only:
+ */
+class elapsedMicros {
+private:
+  unsigned long m_micros;
+
+public:
+  elapsedMicros(unsigned long us = 0) {
+    m_micros = micros() - us;
+  }
+  ~elapsedMicros() {
+    //
+  }
+  operator unsigned long () const {
+    return micros() - m_micros;
+  }
+  elapsedMicros & operator = (unsigned long us) {
+    m_micros = micros() - us;
+    return *this;
+  }
+};
+#endif
 
 #endif /* !cariot_config_hh */
