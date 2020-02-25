@@ -6,6 +6,8 @@
 #ifndef cariot_Commander_hh
 #define cariot_Commander_hh
 
+#include "FIFO.hh"
+
 class Commander {
 public:
   class Responder {
@@ -18,16 +20,25 @@ public:
 
 protected:
   Responder * m_Responder;
+  FIFO<char> m_fifo;
 
 private:
   int m_length;
-  char m_buffer[16];
+  char m_buffer[16]; // command receive buffer
+  bool m_bUI;        // UI text mode
+  bool m_bSOL;       // Start of line
 
 public:
   Commander(Responder * R);
   virtual ~Commander();
   virtual const char * name() const; // override this method to provide ID
   virtual void update();             // override this method to manage IO streams
+
+  virtual void command_send(char code, unsigned long value = 0);
+  virtual void command_print(const char * str);
+  virtual void ui(char c = 0);
+
+  virtual const char * eol();
 
 protected:
   void notify(const char * str);

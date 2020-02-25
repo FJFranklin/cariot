@@ -27,4 +27,19 @@ void SerialCommander::update() {
   while (m_serial->available()) {
     push((char) m_serial->read());
   }
+  while (m_serial->availableForWrite()) {
+    char c;
+    if (!m_fifo.pop(c)) break;
+    m_serial->write(c);
+  }
+}
+
+void SerialCommander::write(const char * str, bool add_eol) {
+  if (str) {
+    if (add_eol) {
+      m_serial->println(str);
+    } else {
+      m_serial->print(str);
+    }
+  }
 }

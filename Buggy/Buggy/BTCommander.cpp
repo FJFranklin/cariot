@@ -96,6 +96,11 @@ bool BTCommander::print(const char * str, bool add_eol) {
   return false;
 }
 
+const char * BTCommander::eol() {
+  static const char * str_eol = "\\n";
+  return str_eol;
+}
+
 bool BTCommander::get_bytes() {
   bool have_input = false;
 #ifdef FEATHER_M0_BTLE
@@ -161,6 +166,24 @@ void BTCommander::update() {
 
     while (*ptr) {
       push(*ptr++);
+    }
+  }
+
+  int max_bt = available();
+  int max_fifo = m_fifo.available();
+  int count = (max_bt < max_fifo) ? max_bt : max_fifo;
+
+  if (count) {
+    m_ble->print("AT+BLEUARTTX=");
+
+    for (int i = 0; i < count; i++) {
+      char c;
+      m_fifo.pop(c);
+      m_ble->write(c);
+    }
+    m_ble->println();
+    if (!m_ble->waitForOK()) {
+      notify("print: wait - error!");
     }
   }
 #endif

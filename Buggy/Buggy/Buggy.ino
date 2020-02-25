@@ -3,11 +3,17 @@
 
 #include "config.hh"
 #include "Timer.hh"
-#include "BTCommander.hh"
-#include "LoRaCommander.hh"
 #include "SerialCommander.hh"
-#include "Encoders.hh"
 
+#ifdef ENABLE_BLUETOOTH
+#include "BTCommander.hh"
+#endif
+#ifdef ENABLE_LORA
+#include "LoRaCommander.hh"
+#endif
+#ifdef ENABLE_ENCODERS
+#include "Encoders.hh"
+#endif
 #ifdef ENABLE_JOYWING
 #include "Joy.hh"
 #else
@@ -74,15 +80,35 @@ int MSpeed = 0; // Target setting for (both) motors; range is -127..127
 class Buggy : public Timer, public Commander::Responder {
 private:
   SerialCommander s0;
+#ifdef APP_FORWARDING
+  SerialCommander s1;
+#endif
+#ifdef APP_MOTORCONTROL
+  SerialCommander s2;
+#endif
+#ifdef ENABLE_BLUETOOTH
   BTCommander *bt;
+#endif
+#ifdef ENABLE_LORA
   LoRaCommander *lora;
+#endif
   Joy *J;
 
 public:
   Buggy() :
     s0(Serial, '0', this),
+#ifdef APP_FORWARDING
+    s1(Serial1, '1', this),
+#endif
+#ifdef APP_MOTORCONTROL
+    s2(Serial2, '2', this),
+#endif
+#ifdef ENABLE_BLUETOOTH
     bt(BTCommander::commander(this)), // zero if no Bluetooth connection is possible
+#endif
+#ifdef ENABLE_LORA
     lora(LoRaCommander::commander(this, LORA_ID_SELF, LORA_ID_PARTNER)), // zero if no LoRa connection is possible
+#endif
     J(0)
   {
 #ifdef ENABLE_JOYWING
@@ -106,10 +132,15 @@ public:
       if (Serial) {
         Serial.println(e_stop);
       }
+#ifdef APP_FORWARDING
+      s1.command_send('x');
+#else
       MSpeed = 0;
+#endif
     }
   }
   virtual void command(Commander * C, char code, unsigned long value) {
+#ifdef ENABLE_FEEDBACK
     if (Serial) {
       Serial.print(C->name());
       Serial.print(": command: ");
@@ -117,7 +148,28 @@ public:
       Serial.print(": ");
       Serial.println(value);
     }
+#endif
 
+#ifdef APP_FORWARDING
+    if (code == 'p') {
+      s0.ui((char) (value & 0xFF));
+#ifdef ENABLE_BLUETOOTH
+      if (bt) {
+        bt->ui((char) (value & 0xFF));
+      }      
+#endif
+    } else if (strcmp(C->name(), "s1") == 0) { // command received from Serial1; forward to others
+      s0.command_send(code, value);
+#ifdef ENABLE_BLUETOOTH
+      if (bt) {
+        bt->command_send(code, value);
+      }
+#endif
+    } else {                                   // command received from others; forward to Serial1
+      s1.command_send(code, value);
+    }
+#endif
+#ifdef APP_MOTORCONTROL
     switch(code) {
     case 'f':
       MSpeed = (value > 127 ? 127 : value);
@@ -131,13 +183,15 @@ public:
     default:
       break;
     }
+#endif
   }
 
   virtual void every_milli() { // runs once a millisecond, on average
-    s0.update(); // important: housekeeping
+    // ...
   }
 
   virtual void every_10ms() { // runs once every 10ms, on average
+#ifdef APP_MOTORCONTROL
     int M1 = M1_actual;
     int M2 = M2_actual;
 
@@ -158,50 +212,67 @@ public:
     if ((M1 != M1_actual) || (M2 != M2_actual)) {
       s_roboclaw_set(M1, M2);
     }
-
+#endif
+#ifdef ENABLE_LORA
     if (lora) { // important: housekeeping - check for incoming messages
       lora->update();
     }
+#endif
+#ifdef ENABLE_ENC_CLASS
+    E1.sync();
+#endif
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
     digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8); // double blink per second
 
+#ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
+#ifdef ENABLE_ENC_CLASS
+      float rpm = 60.0 * E1.latest();
+#else
       float rpm = s_encoder_rpm(); // Calculate RPM
-
+#endif
       const float d_wheel = 0.16; // Wheel diameter [m]
       float vehicle_speed = rpm * PI * d_wheel * 0.06; // Vehicle speed in km/h
 
       if (rpm || MSpeed || M1_actual || M2_actual) {
-        String str("MSpeed: ");
-        str += String(MSpeed) + String(" {") + String(M1_actual) + String(",") + String(M2_actual) + String("}; Speed: ") + String(vehicle_speed) + String(" km/h; Dir.: ");
+        char str[64];
+#ifndef ENABLE_ENC_CLASS
         if (encoderForwards) {
-          str += "Forwards";
+          // str += "Forwards";
+          snprintf(str, 64, "MSpeed: %d {%d,%d}; Speed: %.2f km/h; Dir.: F", MSpeed, M1_actual, M2_actual, vehicle_speed);
         } else {
-          str += "Backwards";
+          // str += "Backwards";
+          snprintf(str, 64, "MSpeed: %d {%d,%d}; Speed: %.2f km/h; Dir.: B", MSpeed, M1_actual, M2_actual, vehicle_speed);
         }
+#endif
         if (Serial) {
           Serial.println(str);
         }
-        if (bt) {
-          bt->print(str.c_str(), true);
-        }
+        s2.command_print(str);
       }
-    } else if (bt) { // important: housekeeping
+    }
+#endif
+#ifdef ENABLE_BLUETOOTH
+    if (bt) { // important: housekeeping
       bt->update();
     }
+#endif
+#ifdef ENABLE_LORA
     if (lora) { // important: housekeeping
       lora->update(true); // flush output, if any
     }
+#endif
 #ifdef ENABLE_JOYWING
-    J->start(); // start communication sequence
+    if (J) {
+      J->start(); // start communication sequence
+    }
 #endif
   }
 
   virtual void every_second() { // runs once every second
-    // ...
-
+#ifdef ENABLE_LORA
     static unsigned long count = 0;
 
     if (lora) { // important: housekeeping
@@ -209,9 +280,17 @@ public:
       tick += String(++count);
       lora->print(tick.c_str());
     }
+#endif
   }
 
   virtual void loop() {
+    s0.update(); // important: housekeeping
+#ifdef APP_FORWARDING
+    s1.update(); // important: housekeeping
+#endif
+#ifdef APP_MOTORCONTROL
+    s2.update(); // important: housekeeping
+#endif
 #ifdef ENABLE_JOYWING
     if (J->tick()) { // returns true if Joystick communication sequence complete
       if (J->changes()) {
@@ -239,12 +318,28 @@ void setup() {
     if (Serial) break;
   }
   Serial.begin(115200);
+#ifdef APP_FORWARDING
+  while (millis() < 500) {
+    if (Serial1) break;
+  }
+  Serial1.begin(115200);
+#endif
+#ifdef APP_MOTORCONTROL
+  while (millis() < 500) {
+    if (Serial2) break;
+  }
+  Serial2.begin(115200);
+
+  s_roboclaw_init();    // Setup RoboClaw
+#ifdef ENABLE_ENC_CLASS
+  E1.init(E1_ChA, E1_ChB, E1_ppr, false); // set up encoder 1
+#else
+  s_encoder_init();     // Setup encoders
+#endif
+#endif
 
   pinMode(LED_BUILTIN, OUTPUT);
 
-  s_roboclaw_init();    // Setup RoboClaw
-  s_encoder_init();     // Setup encoders
-  
   Buggy().run();
 }
 

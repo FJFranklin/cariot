@@ -8,7 +8,9 @@
 
 Commander::Commander(Responder * R) :
   m_Responder(R),
-  m_length(0)
+  m_length(0),
+  m_bUI(false),
+  m_bSOL(true)
 {
   // ...
 }
@@ -24,6 +26,52 @@ const char * Commander::name() const {
 
 void Commander::update() {
   // ...
+}
+
+void Commander::command_send(char code, unsigned long value) {
+  if (m_bUI) {
+    ui(); // line-break for readability
+  }
+
+  char buf[16];
+  snprintf(buf, 16, "%c%lu,", code, value);
+  m_fifo.write(buf, strlen(buf));
+
+  m_bSOL = false;
+}
+
+void Commander::command_print(const char * str) {
+  if (str) {
+    const char * ptr = str;
+    while (*ptr) {
+      command_send('p', (unsigned long) (*ptr++));
+    }
+  }
+  command_send('p');
+}
+
+const char * Commander::eol() {
+  static const char * str_eol = "\n";
+  return str_eol;
+}
+
+void Commander::ui(char c) {
+  bool bPrintable = isprint(c);
+
+  if (!m_bSOL && ((!c && m_bUI) || (bPrintable && !m_bUI))) { // line-break for readability
+    const char * str = eol();
+    int len = strlen(str);
+    if (m_fifo.availableToWrite() >= len) { // don't add the end-of-line unless you can add the whole string
+      m_fifo.write(str, len);
+    }
+    m_bUI = false;
+    m_bSOL = true;
+  }
+  if (bPrintable) { // append
+    m_fifo.push(c);
+    m_bUI = true;
+    m_bSOL = false;
+  }
 }
 
 void Commander::notify(const char * str) {

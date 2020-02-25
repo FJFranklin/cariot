@@ -4,6 +4,7 @@
  */
 
 #include "config.hh"
+#ifdef ENABLE_JOYWING
 #include "Joy.hh"
 
 #if defined(TEENSYDUINO)
@@ -292,3 +293,4 @@ void Joy::s_error() {
 }
 
 #endif // TEENSYDUINO
+#endif // ENABLE_JOYWING

@@ -35,6 +35,7 @@ public:
 private:
   int available();
 public:
+  virtual void write(const char * str, bool add_eol);
   bool print(const char * str, bool add_eol=false);
 public:
   virtual void update(bool flush_output=false);

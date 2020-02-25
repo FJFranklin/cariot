@@ -10,8 +10,28 @@
 
 //#define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
 //#define ENABLE_BLUETOOTH  // required for Bluetooth; comment to disable
-#define ENABLE_LORA       // required for LoRa; comment to disable
+//#define ENABLE_LORA       // required for LoRa; comment to disable
 //#define ENABLE_JOYWING    // Feather JoyWing; comment to disable
+//#define ENABLE_ENCODERS   // use encoders
+//#define ENABLE_ENC_CLASS  // use Encoder class
+//#define ENABLE_FEEDBACK   // echo received commands to Serial, if available // FIXME - collisions!
+
+#if defined(ADAFRUIT_FEATHER_M0)
+#define APP_FORWARDING    // Forward commands between Serial1 and Serial/Bluetooth
+#endif
+#if defined(TEENSYDUINO)
+#define APP_MOTORCONTROL  // Command channel on Serial2; RoboClaw on Serial1
+#endif
+
+#ifdef APP_FORWARDING // Feather M0 BTLE
+#define ENABLE_BLUETOOTH
+#endif
+
+#ifdef APP_MOTORCONTROL // Teensy 3.2/3.5
+#define ENABLE_ROBOCLAW
+#define ENABLE_ENCODERS
+//#define ENABLE_ENC_CLASS
+#endif
 
 #define LORA_ID_SELF    0
 #define LORA_ID_PARTNER 1
@@ -63,6 +83,9 @@ public:
     return *this;
   }
 };
+
 #endif
+
+#define FIFO_BUFSIZE 256
 
 #endif /* !cariot_config_hh */

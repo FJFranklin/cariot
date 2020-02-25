@@ -21,6 +21,7 @@ public:
 
   virtual const char * name() const;
   virtual void update();
+  virtual void write(const char * str, bool add_eol);
 };
 
 #endif /* !cariot_SerialCommander_hh */

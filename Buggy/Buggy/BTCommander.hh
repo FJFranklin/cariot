@@ -31,6 +31,7 @@ public:
 private:
   int available();
 public:
+  virtual const char * eol();
   bool print(const char * str, bool add_eol=false);
 private:
   bool get_bytes();
