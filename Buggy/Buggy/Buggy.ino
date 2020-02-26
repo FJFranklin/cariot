@@ -228,17 +228,24 @@ public:
 
 #ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
+      const float d_wheel = 0.16; // Wheel diameter [m] // TODO - check!! // FIXME
+      bool moving = false;
 #ifdef ENABLE_ENC_CLASS
-      float rpm = 60.0 * E1.latest();
+      float vs1 = E1.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+      float vs2 = E2.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+      float vs3 = E3.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+      float vs4 = E4.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+      moving = vs1 || vs2 || vs3 || vs4;
 #else
-      float rpm = s_encoder_rpm(); // Calculate RPM
+      float vehicle_speed = s_encoder_rpm() * PI * d_wheel * 0.06; // Vehicle speed in km/h
+      moving = vehicle_speed;
 #endif
-      const float d_wheel = 0.16; // Wheel diameter [m]
-      float vehicle_speed = rpm * PI * d_wheel * 0.06; // Vehicle speed in km/h
 
-      if (rpm || MSpeed || M1_actual || M2_actual) {
+      if (moving || MSpeed || M1_actual || M2_actual) {
         char str[64];
-#ifndef ENABLE_ENC_CLASS
+#ifdef ENABLE_ENC_CLASS
+        snprintf(str, 64, "M: %d {%d,%d} v: %.1f,%.1f,%.1f,%.1f km/h", MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
+#else
         if (encoderForwards) {
           // str += "Forwards";
           snprintf(str, 64, "MSpeed: %d {%d,%d}; Speed: %.2f km/h; Dir.: F", MSpeed, M1_actual, M2_actual, vehicle_speed);
@@ -333,6 +340,9 @@ void setup() {
   s_roboclaw_init();    // Setup RoboClaw
 #ifdef ENABLE_ENC_CLASS
   E1.init(E1_ChA, E1_ChB, E1_ppr, false); // set up encoder 1
+  E2.init(E2_ChA, E2_ChB, E2_ppr, false); // set up encoder 1
+  E3.init(E3_ChA, E3_ChB, E3_ppr, false); // set up encoder 1
+  E4.init(E4_ChA, E4_ChB, E4_ppr, false); // set up encoder 1
 #else
   s_encoder_init();     // Setup encoders
 #endif

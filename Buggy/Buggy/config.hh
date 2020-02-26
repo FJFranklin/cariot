@@ -30,7 +30,7 @@
 #ifdef APP_MOTORCONTROL // Teensy 3.2/3.5
 #define ENABLE_ROBOCLAW
 #define ENABLE_ENCODERS
-//#define ENABLE_ENC_CLASS
+#define ENABLE_ENC_CLASS
 #endif
 
 #define LORA_ID_SELF    0
