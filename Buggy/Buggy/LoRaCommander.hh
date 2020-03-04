@@ -9,10 +9,12 @@
 #include "Commander.hh"
 
 class RH_RF95;
+class MiniChain;
 
 class LoRaCommander : public Commander {
 private:
   RH_RF95 * m_rf95;
+  MiniChain * m_chain;
 
   unsigned char m_id_self;
   unsigned char m_id_partner;
@@ -35,8 +37,9 @@ public:
 private:
   int available();
 public:
-  virtual void write(const char * str, bool add_eol);
-  bool print(const char * str, bool add_eol=false);
+  virtual void command_send(char code, unsigned long value = 0);
+  virtual void command_print(const char * str);
+  virtual void ui(char c = 0);
 public:
   virtual void update(bool flush_output=false);
 };

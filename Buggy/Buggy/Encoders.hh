@@ -6,6 +6,27 @@
 #ifndef cariot_encoders_hh
 #define cariot_encoders_hh
 
+#ifdef TARGET_PROTOTYPE
+#define ENCODER_PPR  256 // encoder resolution
+#endif
+
+#ifdef TARGET_TRACKBUGGY
+#define ENCODER_PPR 1024 // encoder resolution
+#endif
+
+#ifdef ENABLE_ENC_CLASS
+/* Pins for encoders, if using the Encoder class
+ */
+#define E1_ChA 14 // yellow is /A
+#define E1_ChB 15 // pink   is /B
+#define E2_ChA 16 // yellow is /A
+#define E2_ChB 17 // pink   is /B
+#define E3_ChA 18 // yellow is /A
+#define E3_ChB 19 // pink   is /B
+#define E4_ChA 20 // yellow is /A
+#define E4_ChB 21 // pink   is /B
+#endif
+
 #ifndef ENABLE_ENC_CLASS
 
 /* Rotary Encoder Setup:
@@ -15,8 +36,6 @@
           Orange > 6
           Black is the index pulse and is not used in this code
  */
-// Rotary encoder pulses per rotation (change as required, this is in the spec of the encoder)
-#define ENC_COUNT_REV 1024 // 256 (Low-Res Encoder) or 1024 (High-Res Encoder)
 
 // Encoder output to Arduino Interrupt pin
 #define ENC_A 14  //Channel A (Brown)  set to pin 5 (Feather) or 14 (Teensy)
@@ -63,7 +82,7 @@ static float s_encoder_rpm() { // Calculate RPM
   }
   time_last = time_this;
 
-  float revs = ((float) encoderValue) / ENC_COUNT_REV;
+  float revs = ((float) encoderValue) / ENCODER_PPR;
   encoderValue = 0;
 
   float rpm = 0;
@@ -74,19 +93,6 @@ static float s_encoder_rpm() { // Calculate RPM
 }
 
 #else // ENABLE_ENC_CLASS
-
-#define E1_ChA 14 // yellow is /A
-#define E1_ChB 15 // pink   is /B
-#define E1_ppr 1024
-#define E2_ChA 16 // yellow is /A
-#define E2_ChB 17 // pink   is /B
-#define E2_ppr 1024
-#define E3_ChA 18 // yellow is /A
-#define E3_ChB 19 // pink   is /B
-#define E3_ppr 1024
-#define E4_ChA 20 // yellow is /A
-#define E4_ChB 21 // pink   is /B
-#define E4_ppr 1024
 
 class Encoder {
 private:

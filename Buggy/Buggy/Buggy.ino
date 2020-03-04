@@ -14,68 +14,16 @@
 #ifdef ENABLE_ENCODERS
 #include "Encoders.hh"
 #endif
+#ifdef ENABLE_GPS
+#include <Adafruit_GPS.h>
+#endif
 #ifdef ENABLE_JOYWING
 #include "Joy.hh"
 #else
 class Joy;
 #endif
 
-#ifdef ENABLE_ROBOCLAW
-#include <RoboClaw.h>
-
-/* Motor Setup:
-   (RoboClaw) S1 > (Uno etc) 11
-              S2 >           10
-              S1->           GND
- * 
-   (RoboClaw) S1 > (other)   1
-              S2 >           0
-              S1->           GND
- */
-RoboClaw roboclaw(config_serial(), 10000);
-#endif // ENABLE_ROBOCLAW
-
-static void s_roboclaw_init() {
-#ifdef ENABLE_ROBOCLAW
-  roboclaw.begin(38400);
-#endif
-}
-
-int M1_actual = 0;
-int M2_actual = 0;
-
-static void s_roboclaw_set(int M1, int M2) {
-  const uint8_t address = 0x80;
-#ifdef ENABLE_ROBOCLAW
-  if (M1 < 0) {
-    if (M1 < -127) {
-      M1 = -127;
-    }
-    roboclaw.BackwardM1(address, (uint8_t) (-M1));
-  } else {
-    if (M1 > 127) {
-      M1 = 127;
-    }
-    roboclaw.ForwardM1(address, (uint8_t) M1);
-  }
-
-  if (M2 < 0) {
-    if (M2 < -127) {
-      M2 = -127;
-    }
-    roboclaw.BackwardM2(address, (uint8_t) (-M2));
-  } else {
-    if (M2 > 127) {
-      M2 = 127;
-    }
-    roboclaw.ForwardM2(address, (uint8_t) M2);
-  }
-#endif
-  M1_actual = M1;
-  M2_actual = M2;
-}
-
-int MSpeed = 0; // Target setting for (both) motors; range is -127..127
+#include "Claw.hh"
 
 class Buggy : public Timer, public Commander::Responder {
 private:
@@ -92,7 +40,11 @@ private:
 #ifdef ENABLE_LORA
   LoRaCommander *lora;
 #endif
+#ifdef ENABLE_GPS
+  Adafruit_GPS *gps;
+#endif
   Joy *J;
+  bool bReporting;
 
 public:
   Buggy() :
@@ -109,8 +61,20 @@ public:
 #ifdef ENABLE_LORA
     lora(LoRaCommander::commander(this, LORA_ID_SELF, LORA_ID_PARTNER)), // zero if no LoRa connection is possible
 #endif
-    J(0)
+#ifdef ENABLE_GPS
+    gps(new Adafruit_GPS(&Serial5)),
+#endif
+    J(0),
+    bReporting(false)
   {
+#ifdef ENABLE_GPS
+    gps->begin(9600);
+    gps->sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+    gps->sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+    gps->sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+    //gps->sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+    //gps->sendCommand(PGCMD_ANTENNA);
+#endif
 #ifdef ENABLE_JOYWING
     J = Joy::joy();
 #endif
@@ -180,6 +144,9 @@ public:
     case 'x':
       MSpeed = 0;
       break;
+    case 'R':
+      bReporting = value;
+      break;
     default:
       break;
     }
@@ -220,11 +187,14 @@ public:
 #endif
 #ifdef ENABLE_ENC_CLASS
     E1.sync();
+    E2.sync();
+    E3.sync();
+    E4.sync();
 #endif
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
-    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8); // double blink per second
+    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (bReporting && tenth == 6)); // double blink per second, or triple if reporting
 
 #ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
@@ -244,7 +214,7 @@ public:
       if (moving || MSpeed || M1_actual || M2_actual) {
         char str[64];
 #ifdef ENABLE_ENC_CLASS
-        snprintf(str, 64, "M: %d {%d,%d} v: %.1f,%.1f,%.1f,%.1f km/h", MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
+        snprintf(str, 64, "M: %d {%d %d} v: %.2f %.2f %.2f %.2f km/h", MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
 #else
         if (encoderForwards) {
           // str += "Forwards";
@@ -254,9 +224,11 @@ public:
           snprintf(str, 64, "MSpeed: %d {%d,%d}; Speed: %.2f km/h; Dir.: B", MSpeed, M1_actual, M2_actual, vehicle_speed);
         }
 #endif
+#ifndef ENABLE_GPS
         if (Serial) {
           Serial.println(str);
         }
+#endif
         s2.command_print(str);
       }
     }
@@ -285,18 +257,82 @@ public:
     if (lora) { // important: housekeeping
       String tick("Tick #");
       tick += String(++count);
-      lora->print(tick.c_str());
+      lora->command_print(tick.c_str());
     }
 #endif
   }
 
-  virtual void loop() {
+  virtual void tick() {
     s0.update(); // important: housekeeping
 #ifdef APP_FORWARDING
     s1.update(); // important: housekeeping
 #endif
 #ifdef APP_MOTORCONTROL
     s2.update(); // important: housekeeping
+#endif
+#ifdef ENABLE_GPS
+    if (gps->available()) {
+      gps->read();
+      if (gps->newNMEAreceived()) {
+        if (gps->parse(gps->lastNMEA())) {
+          if (bReporting) {
+            char buf[48];
+            snprintf(buf, 48, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
+              (int) gps->day,
+              (int) gps->month,
+              (int) gps->year,
+              (int) gps->hour,
+              (int) gps->minute,
+              (int) gps->seconds,
+              (unsigned int) gps->milliseconds);
+            s0.ui_print(buf);
+
+            float coord = abs(gps->latitudeDegrees);
+            int degrees = (int) coord;
+            coord = (coord - (float) degrees) * 60;
+            int minutes = (int) coord;
+            coord = (coord - (float) minutes) * 60;
+            
+            snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat);
+            s0.ui_print(buf);
+            
+            coord = abs(gps->longitudeDegrees);
+            degrees = (int) coord;
+            coord = (coord - (float) degrees) * 60;
+            minutes = (int) coord;
+            coord = (coord - (float) minutes) * 60;
+            
+            snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon);
+            s0.ui_print(buf);
+
+            snprintf(buf, 48, "%.6f,%.6f,%10lu", gps->latitudeDegrees, gps->longitudeDegrees, (unsigned long) millis());
+#ifdef APP_MOTORCONTROL
+            s0.ui_print(buf);
+
+            snprintf(buf, 48, ",%3d,%3d,%3d,", MSpeed, M1_actual, M2_actual);
+            s0.ui_print(buf);
+
+            const float d_wheel = 0.16; // Wheel diameter [m] // TODO - check!! // FIXME
+
+#ifdef ENABLE_ENC_CLASS
+            float vs1 = E1.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+            float vs2 = E2.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+            float vs3 = E3.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+            float vs4 = E4.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+
+            snprintf(buf, 48, "%.3f,%.3f,%.3f,%.3f", vs1, vs2, vs3, vs4);
+#else
+            float vehicle_speed = s_encoder_rpm() * PI * d_wheel * 0.06; // Vehicle speed in km/h
+
+            snprintf(buf, 48, "%.3f,%c", vehicle_speed, encoderForwards ? 'F' : 'B');
+#endif
+#endif
+            s0.ui_print(buf);
+            s0.ui();
+          }
+        }
+      }
+    }
 #endif
 #ifdef ENABLE_JOYWING
     if (J->tick()) { // returns true if Joystick communication sequence complete
@@ -312,7 +348,7 @@ public:
           Serial.println(joy);
         }
         if (lora) {
-          lora->print(joy.c_str());
+          lora->command_print(joy.c_str());
         }
       }
     }
@@ -339,10 +375,10 @@ void setup() {
 
   s_roboclaw_init();    // Setup RoboClaw
 #ifdef ENABLE_ENC_CLASS
-  E1.init(E1_ChA, E1_ChB, E1_ppr, false); // set up encoder 1
-  E2.init(E2_ChA, E2_ChB, E2_ppr, false); // set up encoder 1
-  E3.init(E3_ChA, E3_ChB, E3_ppr, false); // set up encoder 1
-  E4.init(E4_ChA, E4_ChB, E4_ppr, false); // set up encoder 1
+  E1.init(E1_ChA, E1_ChB, ENCODER_PPR, false); // set up encoder 1
+  E2.init(E2_ChA, E2_ChB, ENCODER_PPR, false); // set up encoder 2
+  E3.init(E3_ChA, E3_ChB, ENCODER_PPR, false); // set up encoder 3
+  E4.init(E4_ChA, E4_ChB, ENCODER_PPR, false); // set up encoder 4
 #else
   s_encoder_init();     // Setup encoders
 #endif

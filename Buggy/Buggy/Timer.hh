@@ -33,7 +33,7 @@ public:
   virtual void every_second() { // runs once every second
     // ...
   }
-  virtual void loop() {
+  virtual void tick() {
     // ...
   }
 
@@ -50,7 +50,7 @@ public:
     m_stop = false;
 
     while (!m_stop) {
-      loop();
+      tick();
 
       // our little internal real-time clock:
       unsigned long current_time = millis();

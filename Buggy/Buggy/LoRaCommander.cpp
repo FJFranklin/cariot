@@ -18,6 +18,115 @@
 #endif
 #include "LoRaCommander.hh"
 
+class MiniBuffer {
+private:
+  uint8_t * m_start;
+  uint8_t * m_end;
+  uint8_t * m_next;
+
+  MiniBuffer * m_link_next;
+
+  friend class MiniChain;
+
+public:
+  MiniBuffer(uint8_t * start) :
+    m_start(start),
+    m_end(start + 51),
+    m_next(start),
+    m_link_next(0)
+  {
+    // ...
+  }
+  ~MiniBuffer() {
+    // ...
+  }
+  void init(unsigned char from, unsigned char to, const char * str = 0) {
+    m_next = m_start;
+    *m_next++ = (uint8_t) 'T';
+    *m_next++ = (uint8_t) 'B';
+    *m_next++ = (uint8_t) from;
+    *m_next++ = (uint8_t) to;
+
+    if (str) {
+      *m_next++ = '"';
+      while ((m_next < m_end) && *str) {
+        *m_next++ = (uint8_t) *str++;
+      }
+    }
+  }
+  int availableToWrite() const {
+    return m_end - m_next;
+  }
+  bool empty() const {
+    return m_next - m_start < 5;
+  }
+  int length() const {
+    return m_next - m_start;
+  }
+  const uint8_t * buffer() const {
+    return m_start;
+  }
+};
+
+class MiniChain {
+private:
+  uint8_t m_buffer[255];
+  unsigned char m_from;
+  unsigned char m_to;
+  MiniBuffer * m_first;
+  MiniBuffer * m_last;
+  MiniBuffer * m_current;
+  MiniBuffer m_B0;
+  MiniBuffer m_B1;
+  MiniBuffer m_B2;
+  MiniBuffer m_B3;
+  MiniBuffer m_B4;
+public:
+  MiniChain(unsigned char from, unsigned char to) :
+    m_from(from),
+    m_to(to),
+    m_B0(m_buffer),
+    m_B1(m_buffer +  51),
+    m_B2(m_buffer + 102),
+    m_B3(m_buffer + 153),
+    m_B4(m_buffer + 204)
+  {
+    m_B0.m_link_next = &m_B1;
+    m_B1.m_link_next = &m_B2;
+    m_B2.m_link_next = &m_B3;
+    m_B3.m_link_next = &m_B4;
+
+    m_first = &m_B0;
+    m_last  = &m_B4;
+
+    m_current = m_first;
+    m_current->init(from, to);
+  }
+  const MiniBuffer * first() {
+    return m_first;
+  }
+  void cycle () {
+    if (m_current == m_first) {
+      m_current = m_first->m_link_next;
+    }
+
+    m_last->m_link_next = m_first;
+    m_first = m_first->m_link_next;
+    m_last->m_link_next = 0;
+  }
+  bool print(const char * str) {
+    if (!m_current || !str) return false;
+    if (!*str) return false;
+
+    if (!m_current->empty()) {
+      m_current = m_current->m_link_next;
+      if (!m_current) return false;
+    }
+    m_current->init(m_from, m_to, str);
+    return true;
+  }
+};
+
 LoRaCommander::LoRaCommander(Commander::Responder * R, unsigned char id_self, unsigned char id_partner) :
   Commander(R),
   m_id_self(id_self),
@@ -27,6 +136,7 @@ LoRaCommander::LoRaCommander(Commander::Responder * R, unsigned char id_self, un
 #else
   m_rf95(0),
 #endif
+  m_chain(new MiniChain(id_self, id_partner)),
   m_bConnected(false)
 {
   // ...
@@ -100,11 +210,34 @@ int LoRaCommander::available() {
   return count;
 }
 
-bool LoRaCommander::print(const char * str, bool add_eol) {
-#ifdef FEATHER_M0_LORA
-  m_rf95->send((uint8_t *) str, strlen(str));
-#endif
+void LoRaCommander::command_send(char code, unsigned long value) {
 #if 0
+  if (m_bUI) {
+    ui(); // line-break for readability
+  }
+
+  char buf[16];
+  snprintf(buf, 16, "%c%lu,", code, value);
+  m_fifo.write(buf, strlen(buf));
+
+  m_bSOL = false;
+#endif
+}
+
+void LoRaCommander::command_print(const char * str) {
+  m_chain->print(str);
+}
+
+void LoRaCommander::ui(char c) {
+  //
+}
+
+#if 0
+bool LoRaCommander::print(const char * str) {
+  return m_chain->print(str);
+#ifdef FEATHER_M0_LORA
+  // m_rf95->send((uint8_t *) str, strlen(str));
+#endif
   if (available() > strlen(str) + 2) {
     m_ble->print("AT+BLEUARTTX=");
     m_ble->print(str);
@@ -117,9 +250,9 @@ bool LoRaCommander::print(const char * str, bool add_eol) {
     }
     return true;
   }
-#endif
   return false;
 }
+#endif
 
 static LoRaCommander * s_lora = 0; // single global instance - if any
 

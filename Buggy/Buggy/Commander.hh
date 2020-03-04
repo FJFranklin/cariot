@@ -37,6 +37,12 @@ public:
   virtual void command_send(char code, unsigned long value = 0);
   virtual void command_print(const char * str);
   virtual void ui(char c = 0);
+  void ui_print(const char * str) {
+    if (str)
+      while(*str) {
+        ui(*str++);
+      }
+  }
 
   virtual const char * eol();
 

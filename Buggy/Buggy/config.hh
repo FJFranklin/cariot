@@ -11,30 +11,51 @@
 //#define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
 //#define ENABLE_BLUETOOTH  // required for Bluetooth; comment to disable
 //#define ENABLE_LORA       // required for LoRa; comment to disable
+//#define ENABLE_GPS        // required for GPS; comment to disable
 //#define ENABLE_JOYWING    // Feather JoyWing; comment to disable
 //#define ENABLE_ENCODERS   // use encoders
 //#define ENABLE_ENC_CLASS  // use Encoder class
 //#define ENABLE_FEEDBACK   // echo received commands to Serial, if available // FIXME - collisions!
 
+#define TARGET_TRACKBUGGY   // Control circuit for the Track Buggy
+//#define TARGET_PROTOTYPE    // Control circuit for the prototype
+//#define TARGET_JOYSTICK     // Feather JoyWing & LoRa transmitter
+//#define TARGET_ANTENNA      // On-board LoRa receiver
+
+#if defined(TARGET_TRACKBUGGY) || defined(TARGET_PROTOTYPE)
 #if defined(ADAFRUIT_FEATHER_M0)
 #define APP_FORWARDING    // Forward commands between Serial1 and Serial/Bluetooth
 #endif
 #if defined(TEENSYDUINO)
 #define APP_MOTORCONTROL  // Command channel on Serial2; RoboClaw on Serial1
 #endif
+#endif
 
-#ifdef APP_FORWARDING // Feather M0 BTLE
+#ifdef APP_FORWARDING
 #define ENABLE_BLUETOOTH
 #endif
 
-#ifdef APP_MOTORCONTROL // Teensy 3.2/3.5
+#ifdef APP_MOTORCONTROL
 #define ENABLE_ROBOCLAW
+#define ENABLE_GPS
 #define ENABLE_ENCODERS
 #define ENABLE_ENC_CLASS
 #endif
 
-#define LORA_ID_SELF    0
-#define LORA_ID_PARTNER 1
+#define LORA_ID_NONE_ALL  42
+#define LORA_ID_ANTENNA   65
+#define LORA_ID_JOYSTICK  74
+
+#if defined(TARGET_JOYSTICK)
+#define ENABLE_LORA       // required for LoRa; comment to disable
+#define LORA_ID_SELF    LORA_ID_JOYSTICK
+#define LORA_ID_PARTNER LORA_ID_ANTENNA
+#endif
+#if defined(TARGET_ANTENNA)
+#define ENABLE_LORA       // required for LoRa; comment to disable
+#define LORA_ID_SELF    LORA_ID_ANTENNA
+#define LORA_ID_PARTNER LORA_ID_NONE_ALL // send to none, receive from all
+#endif
 
 /* Currently Bluetooth & LoRa only work for the Feather M0
  */
@@ -46,20 +67,6 @@
 #define FEATHER_M0_LORA
 #endif
 #endif
-
-/* The RoboClaw expects software serial on AVR systems (Uno, etc.)
- */
-#if defined(ADAFRUIT_FEATHER_M0) || defined(TEENSYDUINO)
-static HardwareSerial * config_serial() {
-  return &Serial1; // RX,TX = 0,1
-}
-#else
-#include <SoftwareSerial.h>
-static SoftwareSerial * config_serial() {
-  static SoftwareSerial serial(10, 11); // On the Uno, pins 0,1 correspond to the main serial line; use RX,TX = 10,11 instead
-  return &serial;
-}
-#endif // RoboClaw serial setup
 
 #if !defined(TEENSYDUINO)
 /* elapsedMicros is defined automatically for Teensy; need to define it for Arduino - this is a partial definition only:
