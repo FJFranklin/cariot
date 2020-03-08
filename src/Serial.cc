@@ -39,11 +39,30 @@ Serial::Command::~Command() {
   // ...
 }
 
+Serial::Report::~Report() {
+  // ...
+}
+
 Serial::Serial(Serial::Command * C, const char * device_name, bool bFixBaud, bool verbose) :
   m_C(C),
+  m_R(0),
   m_device(device_name),
   m_fd(-1),
   m_length(0),
+  m_replen(0),
+  m_bFixBAUD(bFixBaud),
+  m_verbose(verbose)
+{
+  connect();
+}
+
+Serial::Serial(Serial::Report * R, const char * device_name, bool bFixBaud, bool verbose) :
+  m_C(0),
+  m_R(R),
+  m_device(device_name),
+  m_fd(-1),
+  m_length(0),
+  m_replen(0),
   m_bFixBAUD(bFixBaud),
   m_verbose(verbose)
 {
@@ -95,6 +114,26 @@ void Serial::sleep() {
       }
     } else if (count == 0) {
       break;
+    }
+
+    if (m_R) {
+      if (byte == '\n') {
+	if (m_replen) {
+	  m_report[m_replen++] = '\n';
+	  m_report[m_replen  ] = 0;
+	  m_R->serial_report(m_report);
+	  m_replen = 0;
+	}
+      } else if (byte) {
+	m_report[m_replen++] = byte;
+	if (m_replen == 254) {
+	  m_report[m_replen++] = '\n';
+	  m_report[m_replen  ] = 0;
+	  m_R->serial_report(m_report);
+	  m_replen = 0;
+	}
+      }
+      continue;
     }
 
     if ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z')) {
@@ -191,6 +230,9 @@ void Serial::connect() {
   if (m_C) {
     m_C->serial_connect();
   }
+  if (m_R) {
+    m_R->serial_connect();
+  }
 }
 
 void Serial::disconnect() {
@@ -200,6 +242,14 @@ void Serial::disconnect() {
 
     if (m_C) {
       m_C->serial_disconnect();
+    }
+    if (m_R) {
+      if (m_replen) {
+	m_report[m_replen] = 0;
+	m_R->serial_report(m_report);
+	m_replen = 0;
+      }
+      m_R->serial_disconnect();
     }
   }
 }
