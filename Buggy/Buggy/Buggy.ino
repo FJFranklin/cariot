@@ -44,6 +44,8 @@ private:
   Adafruit_GPS *gps;
 #endif
   Joy *J;
+
+  elapsedMicros report;
   bool bReporting;
 
 public:
@@ -62,9 +64,10 @@ public:
     lora(LoRaCommander::commander(this, LORA_ID_SELF, LORA_ID_PARTNER)), // zero if no LoRa connection is possible
 #endif
 #ifdef ENABLE_GPS
-    gps(new Adafruit_GPS(&Serial5)),
+    gps(new Adafruit_GPS(&Serial3)),
 #endif
     J(0),
+    report(0),
     bReporting(false)
   {
 #ifdef ENABLE_GPS
@@ -74,14 +77,18 @@ public:
     gps->sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
     //gps->sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
     //gps->sendCommand(PGCMD_ANTENNA);
+    delay(1000);
 #endif
 #ifdef ENABLE_JOYWING
     J = Joy::joy();
 #endif
-    // ...
+    //pinMode(2, INPUT);
   }
   virtual ~Buggy() {
     // ...
+  }
+  bool reporting() {
+    return bReporting /* || digitalRead(2) */;
   }
 
   virtual void notify(Commander * C, const char * str) {
@@ -194,11 +201,11 @@ public:
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
-    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (bReporting && tenth == 6)); // double blink per second, or triple if reporting
+    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 6)); // double blink per second, or triple if reporting
 
 #ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
-      const float d_wheel = 0.16; // Wheel diameter [m] // TODO - check!! // FIXME
+      const float d_wheel = WHEEL_DIAMETER; // Wheel diameter [m]
       bool moving = false;
 #ifdef ENABLE_ENC_CLASS
       float vs1 = E1.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
@@ -262,6 +269,73 @@ public:
 #endif
   }
 
+  void generate_report() {
+    char buf[48];
+
+#ifdef ENABLE_GPS
+    snprintf(buf, 48, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
+      (int) gps->day,
+      (int) gps->month,
+      (int) gps->year,
+      (int) gps->hour,
+      (int) gps->minute,
+      (int) gps->seconds,
+      (unsigned int) gps->milliseconds);
+    s0.ui_print(buf);
+
+    if (gps->fix) {
+      float coord = abs(gps->latitudeDegrees);
+      int degrees = (int) coord;
+      coord = (coord - (float) degrees) * 60;
+      int minutes = (int) coord;
+      coord = (coord - (float) minutes) * 60;
+            
+      snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat ? gps->lat : ((gps->latitudeDegrees < 0) ? 'S' : 'N'));
+      s0.ui_print(buf);
+            
+      coord = abs(gps->longitudeDegrees);
+      degrees = (int) coord;
+      coord = (coord - (float) degrees) * 60;
+      minutes = (int) coord;
+      coord = (coord - (float) minutes) * 60;
+            
+      snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon ? gps->lon : ((gps->longitudeDegrees < 0) ? 'W' : 'E'));
+      s0.ui_print(buf);
+
+      snprintf(buf, 48, "%.6f,%.6f,", gps->latitudeDegrees, gps->longitudeDegrees);
+      s0.ui_print(buf);
+    } else {
+      s0.ui_print(",,,,");
+    }
+#endif
+
+    snprintf(buf, 48, "%10lu", (unsigned long) millis());
+    s0.ui_print(buf);
+
+#ifdef APP_MOTORCONTROL
+    snprintf(buf, 48, ",%3d,%3d,%3d,", MSpeed, M1_actual, M2_actual);
+    s0.ui_print(buf);
+
+    const float d_wheel = WHEEL_DIAMETER;
+
+#ifdef ENABLE_ENC_CLASS
+    float vs1 = E1.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+    float vs2 = E2.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+    float vs3 = E3.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+    float vs4 = E4.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
+
+    snprintf(buf, 48, "%.3f,%.3f,%.3f,%.3f", vs1, vs2, vs3, vs4);
+#else
+    float vehicle_speed = s_encoder_rpm() * PI * d_wheel * 0.06; // Vehicle speed in km/h
+
+    snprintf(buf, 48, "%.3f,%c", vehicle_speed, encoderForwards ? 'F' : 'B');
+#endif
+    s0.ui_print(buf);
+#endif
+
+    s0.ui();
+  }
+
   virtual void tick() {
     s0.update(); // important: housekeeping
 #ifdef APP_FORWARDING
@@ -275,60 +349,9 @@ public:
       gps->read();
       if (gps->newNMEAreceived()) {
         if (gps->parse(gps->lastNMEA())) {
-          if (bReporting) {
-            char buf[48];
-            snprintf(buf, 48, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
-              (int) gps->day,
-              (int) gps->month,
-              (int) gps->year,
-              (int) gps->hour,
-              (int) gps->minute,
-              (int) gps->seconds,
-              (unsigned int) gps->milliseconds);
-            s0.ui_print(buf);
-
-            float coord = abs(gps->latitudeDegrees);
-            int degrees = (int) coord;
-            coord = (coord - (float) degrees) * 60;
-            int minutes = (int) coord;
-            coord = (coord - (float) minutes) * 60;
-            
-            snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat);
-            s0.ui_print(buf);
-            
-            coord = abs(gps->longitudeDegrees);
-            degrees = (int) coord;
-            coord = (coord - (float) degrees) * 60;
-            minutes = (int) coord;
-            coord = (coord - (float) minutes) * 60;
-            
-            snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon);
-            s0.ui_print(buf);
-
-            snprintf(buf, 48, "%.6f,%.6f,%10lu", gps->latitudeDegrees, gps->longitudeDegrees, (unsigned long) millis());
-#ifdef APP_MOTORCONTROL
-            s0.ui_print(buf);
-
-            snprintf(buf, 48, ",%3d,%3d,%3d,", MSpeed, M1_actual, M2_actual);
-            s0.ui_print(buf);
-
-            const float d_wheel = 0.16; // Wheel diameter [m] // TODO - check!! // FIXME
-
-#ifdef ENABLE_ENC_CLASS
-            float vs1 = E1.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
-            float vs2 = E2.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
-            float vs3 = E3.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
-            float vs4 = E4.latest() * PI * d_wheel * 3.6; // Vehicle speed in km/h
-
-            snprintf(buf, 48, "%.3f,%.3f,%.3f,%.3f", vs1, vs2, vs3, vs4);
-#else
-            float vehicle_speed = s_encoder_rpm() * PI * d_wheel * 0.06; // Vehicle speed in km/h
-
-            snprintf(buf, 48, "%.3f,%c", vehicle_speed, encoderForwards ? 'F' : 'B');
-#endif
-#endif
-            s0.ui_print(buf);
-            s0.ui();
+          if (reporting() && report > 100000) {
+            report = 0;
+            generate_report();
           }
         }
       }

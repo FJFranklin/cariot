@@ -46,6 +46,13 @@
 #define LORA_ID_ANTENNA   65
 #define LORA_ID_JOYSTICK  74
 
+#if defined(TARGET_TRACKBUGGY)
+#define WHEEL_DIAMETER 0.12 // TODO - check!!
+#endif
+#if defined(TARGET_PROTOTYPE)
+#define WHEEL_DIAMETER 0.16
+#endif
+
 #if defined(TARGET_JOYSTICK)
 #define ENABLE_LORA       // required for LoRa; comment to disable
 #define LORA_ID_SELF    LORA_ID_JOYSTICK
