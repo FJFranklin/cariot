@@ -38,23 +38,36 @@ public:
     virtual ~Command();
   };
 
+  class Report {
+  public:
+    virtual void serial_connect() = 0;
+    virtual void serial_disconnect() = 0;
+    virtual void serial_report(const char * report) = 0;
+
+    virtual ~Report();
+  };
+
 private:
   Command * m_C;
+  Report *  m_R;
 
   const char * m_device;
 
   int m_length;
+  int m_replen;
   int m_fd;
 
   bool m_bFixBAUD;
   bool m_verbose;
 
+  char m_report[256];
   char m_buffer[16];
 
 public:
   inline bool connected() const { return m_fd >= 0; }
 
   Serial(Command * C, const char * device_name, bool bFixBaud, bool verbose);
+  Serial(Report * R, const char * device_name, bool bFixBaud, bool verbose);
 
   ~Serial();
 

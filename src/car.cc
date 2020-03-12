@@ -22,10 +22,22 @@
  */
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#include <signal.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "Client.hh"
 #include "Serial.hh"
+
+#define CARIOT_WEBDIR "/home/pi/cariot/www/"
+
+static void loglist();
 
 class Car : public Client, public Serial::Command {
 private:
@@ -41,9 +53,9 @@ private:
   int m_length;
 
 public:
-  Car(const char * serial, bool verbose=false) :
+  Car(const char * serial, bool verbose, bool fixbaud) :
     Client("car", verbose),
-    m_S(this, serial, true, verbose),
+    m_S(this, serial, fixbaud, verbose),
     x_actual(0),
     y_actual(0)
   {
@@ -147,29 +159,150 @@ public:
   }
 };
 
+class Logger : public Ticker, public Serial::Report {
+private:
+  int m_log; // must be initialised before m_S
+
+  Serial m_S;
+
+public:
+  Logger(const char * serial, bool verbose, bool fixbaud) :
+    m_log(-1),
+    m_S(this, serial, fixbaud, verbose)
+  {
+    set_sleeper(&m_S);
+  }
+  virtual ~Logger() {
+    // ...
+  }
+  virtual void serial_connect() {
+    fprintf(stderr, "logger: connected to Arduino\n");
+
+    char logx[] = CARIOT_WEBDIR"logs/log-XXXXXX.csv";
+
+    m_log = mkstemps(logx, 4);
+    if (m_log != -1) {
+      fprintf(stderr, "logger [%d]: log file created\n", m_log);
+    }
+  }
+  virtual void serial_disconnect() {
+    fprintf(stderr, "logger [%d]: disconnected from Arduino\n", m_log);
+
+    if (m_log != -1) {
+      close(m_log);
+      m_log = -1;
+      fprintf(stderr, "logger: log file closed\n");
+    }
+  }
+  virtual void serial_report(const char * report) {
+    if (m_log != -1) {
+      int length = strlen(report);
+      write(m_log, report, length);
+    }
+  }
+  virtual void tick() { // every millisecond
+    Ticker::tick();
+  }
+  virtual void second() { // every second
+    if (!m_S.connected()) {
+      m_S.connect();
+    }
+  }
+};
+
 int main(int argc, char ** argv) {
   const char * serial = "/dev/ttyACM0";
 
   bool verbose = false;
+  bool fixbaud = false;
+  bool logger  = false;
   
   for (int arg = 1; arg < argc; arg++) {
     if (strcmp(argv[arg], "--help") == 0) {
-      fprintf(stderr, "\ncar [--help] [--verbose] [/dev/<ID>]\n\n");
+      fprintf(stderr, "\n%s [--help] [--verbose] [/dev/<ID>]\n\n", argv[0]);
       fprintf(stderr, "  --help     Display this help.\n");
       fprintf(stderr, "  --verbose  Print debugging info.\n");
+      fprintf(stderr, "  --fix-baud Fix the BAUD rate as 115200.\n");
+      fprintf(stderr, "  --logger   Run as a data logger.\n");
       fprintf(stderr, "  /dev/<ID>  Connect to /dev/<ID> instead of default [/dev/ttyACM0].\n\n");
       return 0;
     }
     if (strcmp(argv[arg], "--verbose") == 0) {
       verbose = true;
+    } else if (strcmp(argv[arg], "--fix-baud") == 0) {
+      fixbaud = true;
+    } else if (strcmp(argv[arg], "--logger") == 0) {
+      logger = true;
     } else if (strncmp(argv[arg], "/dev/", 5) == 0) {
       serial = argv[arg];
     } else {
-      fprintf(stderr, "car [--help] [--verbose] [/dev/ID]\n");
+      fprintf(stderr, "%s [--help] [--verbose] [--logger] [--fix-baud] [/dev/ID]\n", argv[0]);
       return -1;
     }
   }
 
-  Car(serial, verbose).loop();
+  if (logger) {
+    if (!fork()) {
+      loglist();
+      exit(0);
+    }
+    Logger(serial, verbose, fixbaud).loop();
+  } else {
+    Car(serial, verbose, fixbaud).loop();
+  }
   return 0;
+}
+
+static const char * size_string(off_t bytes) {
+  static char buffer[16];
+  if (bytes < 1024) {
+    snprintf(buffer, 16, "%14lu ", (unsigned long) bytes);
+  } else {
+    float k = (float) bytes / 1024.0;
+    snprintf(buffer, 16, "%14.2fk", k);
+  }
+  return buffer;
+}
+
+static const char * time_string(const time_t * t_mod) {
+  static char buffer[32];
+  struct tm * info = localtime(t_mod);
+  strftime(buffer, 31, "%c", info);
+  return buffer;
+}
+
+void loglist() {
+  const char * logdir  = CARIOT_WEBDIR"logs";
+  const char * loglist = CARIOT_WEBDIR"logs.html";
+
+  if (chdir(logdir) < 0) return; // oops
+
+  FILE * f = fopen(loglist, "w");
+  if (f) {
+    fputs("<html>\n <head>\n  <title>Cariot Log File Listing</title>\n  <style type=\"text/css\">\n", f);
+    fputs("li {\n\tfont-family: Lucida Console, Courier, monospace;\n\twhite-space: pre;\n}\n", f);
+    fputs("  </style>\n </head>\n <body>\n  <ul>\n", f);
+
+    DIR * d = opendir(".");
+    if (d) {
+      while (true) {
+	struct dirent * e = readdir(d);
+	if (!e) break;
+
+	if (e->d_type == DT_REG)                                        // it's a regular file
+	  if (strcmp(e->d_name + strlen(e->d_name) - 4, ".csv") == 0) { // with a .csv suffix
+	    struct stat s;
+	    if (!stat(e->d_name, &s)) {
+	      const char * file_size = size_string( s.st_size);
+	      const char * file_time = time_string(&s.st_mtime);
+
+	      fprintf(f, "   <li><a href=\"logs/%s\">%s %s  %s</a></li>\n", e->d_name, file_time, file_size, e->d_name);
+	    }
+	  }
+      }
+      closedir(d);
+    }
+    fputs("  </ul>\n </body>\n</html>\n", f);
+    fclose(f);
+  }
 }

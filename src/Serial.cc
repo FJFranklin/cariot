@@ -39,11 +39,30 @@ Serial::Command::~Command() {
   // ...
 }
 
+Serial::Report::~Report() {
+  // ...
+}
+
 Serial::Serial(Serial::Command * C, const char * device_name, bool bFixBaud, bool verbose) :
   m_C(C),
+  m_R(0),
   m_device(device_name),
   m_fd(-1),
   m_length(0),
+  m_replen(0),
+  m_bFixBAUD(bFixBaud),
+  m_verbose(verbose)
+{
+  connect();
+}
+
+Serial::Serial(Serial::Report * R, const char * device_name, bool bFixBaud, bool verbose) :
+  m_C(0),
+  m_R(R),
+  m_device(device_name),
+  m_fd(-1),
+  m_length(0),
+  m_replen(0),
   m_bFixBAUD(bFixBaud),
   m_verbose(verbose)
 {
@@ -73,6 +92,7 @@ void Serial::sleep() {
   if (result == 0) { // time-out
     return;
   }
+
   if (result == -1) { // error
     if (m_verbose)
       fprintf(stderr, "Serial: device error.\n");
@@ -81,9 +101,19 @@ void Serial::sleep() {
   }
 
   unsigned char byte;
+  bool bFirst = true;
 
   while (true) {
     int count = ::read(m_fd, &byte, 1);
+    if (bFirst) {
+      if (!count) { // if we got this far, there really should be some input - unless...
+	if (m_verbose)
+	  fprintf(stderr, "Serial: Unexpected device-read error.\n");
+	disconnect();
+	break;
+      }
+      bFirst = false;
+    }
     if (count < 0) {
       if (errno == EAGAIN) {
 	break;
@@ -95,6 +125,18 @@ void Serial::sleep() {
       }
     } else if (count == 0) {
       break;
+    }
+
+    if (m_R) {
+      if (byte) {
+	m_report[m_replen++] = byte;
+	if (m_replen == 255 || byte == '\n') {
+	  m_report[m_replen] = 0;
+	  m_R->serial_report(m_report);
+	  m_replen = 0;
+	}
+      }
+      continue;
     }
 
     if ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z')) {
@@ -191,6 +233,9 @@ void Serial::connect() {
   if (m_C) {
     m_C->serial_connect();
   }
+  if (m_R) {
+    m_R->serial_connect();
+  }
 }
 
 void Serial::disconnect() {
@@ -200,6 +245,14 @@ void Serial::disconnect() {
 
     if (m_C) {
       m_C->serial_disconnect();
+    }
+    if (m_R) {
+      if (m_replen) {
+	m_report[m_replen] = 0;
+	m_R->serial_report(m_report);
+	m_replen = 0;
+      }
+      m_R->serial_disconnect();
     }
   }
 }
