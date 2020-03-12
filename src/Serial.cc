@@ -92,6 +92,7 @@ void Serial::sleep() {
   if (result == 0) { // time-out
     return;
   }
+
   if (result == -1) { // error
     if (m_verbose)
       fprintf(stderr, "Serial: device error.\n");
@@ -100,9 +101,19 @@ void Serial::sleep() {
   }
 
   unsigned char byte;
+  bool bFirst = true;
 
   while (true) {
     int count = ::read(m_fd, &byte, 1);
+    if (bFirst) {
+      if (!count) { // if we got this far, there really should be some input - unless...
+	if (m_verbose)
+	  fprintf(stderr, "Serial: Unexpected device-read error.\n");
+	disconnect();
+	break;
+      }
+      bFirst = false;
+    }
     if (count < 0) {
       if (errno == EAGAIN) {
 	break;
@@ -117,18 +128,10 @@ void Serial::sleep() {
     }
 
     if (m_R) {
-      if (byte == '\n') {
-	if (m_replen) {
-	  m_report[m_replen++] = '\n';
-	  m_report[m_replen  ] = 0;
-	  m_R->serial_report(m_report);
-	  m_replen = 0;
-	}
-      } else if (byte) {
+      if (byte) {
 	m_report[m_replen++] = byte;
-	if (m_replen == 254) {
-	  m_report[m_replen++] = '\n';
-	  m_report[m_replen  ] = 0;
+	if (m_replen == 255 || byte == '\n') {
+	  m_report[m_replen] = 0;
 	  m_R->serial_report(m_report);
 	  m_replen = 0;
 	}

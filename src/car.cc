@@ -53,9 +53,9 @@ private:
   int m_length;
 
 public:
-  Car(const char * serial, bool verbose=false) :
+  Car(const char * serial, bool verbose, bool fixbaud) :
     Client("car", verbose),
-    m_S(this, serial, true, verbose),
+    m_S(this, serial, fixbaud, verbose),
     x_actual(0),
     y_actual(0)
   {
@@ -161,14 +161,14 @@ public:
 
 class Logger : public Ticker, public Serial::Report {
 private:
+  int m_log; // must be initialised before m_S
+
   Serial m_S;
 
-  int m_fd;
-
 public:
-  Logger(const char * serial, bool verbose=false) :
-    m_S(this, serial, true, verbose),
-    m_fd(-1)
+  Logger(const char * serial, bool verbose, bool fixbaud) :
+    m_log(-1),
+    m_S(this, serial, fixbaud, verbose)
   {
     set_sleeper(&m_S);
   }
@@ -176,32 +176,32 @@ public:
     // ...
   }
   virtual void serial_connect() {
-    fprintf(stdout, "logger: connected to Arduino\n");
+    fprintf(stderr, "logger: connected to Arduino\n");
 
     char logx[] = CARIOT_WEBDIR"logs/log-XXXXXX.csv";
 
-    m_fd = mkstemps(logx, 4);
-    if (m_fd != -1) {
-      fprintf(stdout, "logger: log file created\n");
+    m_log = mkstemps(logx, 4);
+    if (m_log != -1) {
+      fprintf(stderr, "logger [%d]: log file created\n", m_log);
     }
   }
   virtual void serial_disconnect() {
-    fprintf(stdout, "logger: disconnected from Arduino\n");
+    fprintf(stderr, "logger [%d]: disconnected from Arduino\n", m_log);
 
-    if (m_fd != -1) {
-      close(m_fd);
-      m_fd = -1;
-      fprintf(stdout, "logger: log file closed\n");
+    if (m_log != -1) {
+      close(m_log);
+      m_log = -1;
+      fprintf(stderr, "logger: log file closed\n");
     }
   }
   virtual void serial_report(const char * report) {
-    if (m_fd != -1) {
+    if (m_log != -1) {
       int length = strlen(report);
-      write(m_fd, report, length);
+      write(m_log, report, length);
     }
   }
   virtual void tick() { // every millisecond
-    // ...
+    Ticker::tick();
   }
   virtual void second() { // every second
     if (!m_S.connected()) {
@@ -214,6 +214,7 @@ int main(int argc, char ** argv) {
   const char * serial = "/dev/ttyACM0";
 
   bool verbose = false;
+  bool fixbaud = false;
   bool logger  = false;
   
   for (int arg = 1; arg < argc; arg++) {
@@ -221,18 +222,21 @@ int main(int argc, char ** argv) {
       fprintf(stderr, "\n%s [--help] [--verbose] [/dev/<ID>]\n\n", argv[0]);
       fprintf(stderr, "  --help     Display this help.\n");
       fprintf(stderr, "  --verbose  Print debugging info.\n");
+      fprintf(stderr, "  --fix-baud Fix the BAUD rate as 115200.\n");
       fprintf(stderr, "  --logger   Run as a data logger.\n");
       fprintf(stderr, "  /dev/<ID>  Connect to /dev/<ID> instead of default [/dev/ttyACM0].\n\n");
       return 0;
     }
     if (strcmp(argv[arg], "--verbose") == 0) {
       verbose = true;
+    } else if (strcmp(argv[arg], "--fix-baud") == 0) {
+      fixbaud = true;
     } else if (strcmp(argv[arg], "--logger") == 0) {
       logger = true;
     } else if (strncmp(argv[arg], "/dev/", 5) == 0) {
       serial = argv[arg];
     } else {
-      fprintf(stderr, "%s [--help] [--verbose] [/dev/ID]\n", argv[0]);
+      fprintf(stderr, "%s [--help] [--verbose] [--logger] [--fix-baud] [/dev/ID]\n", argv[0]);
       return -1;
     }
   }
@@ -240,10 +244,11 @@ int main(int argc, char ** argv) {
   if (logger) {
     if (!fork()) {
       loglist();
+      exit(0);
     }
-    Logger(serial, verbose).loop();
+    Logger(serial, verbose, fixbaud).loop();
   } else {
-    Car(serial, verbose).loop();
+    Car(serial, verbose, fixbaud).loop();
   }
   return 0;
 }
