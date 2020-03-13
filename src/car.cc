@@ -183,6 +183,8 @@ public:
     m_log = mkstemps(logx, 4);
     if (m_log != -1) {
       fprintf(stderr, "logger [%d]: log file created\n", m_log);
+
+      fchmod(m_log, S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH);
     }
   }
   virtual void serial_disconnect() {
@@ -192,6 +194,11 @@ public:
       close(m_log);
       m_log = -1;
       fprintf(stderr, "logger: log file closed\n");
+
+      if (!fork()) {
+	loglist();
+	exit(0);
+      }
     }
   }
   virtual void serial_report(const char * report) {
