@@ -1,18 +1,20 @@
 #include "Timer.hh"
 #include "BTCommander.hh"
 #include "SerialCommander.hh"
+#include "EInk.hh"
 
 class Inky : public Timer, public Commander::Responder {
 private:
   SerialCommander s0;
   BTCommander *bt;
+  EInk ink;
 
 public:
   Inky() :
     s0(Serial, '0', this),
     bt(BTCommander::commander(this)) // zero if no bluetooth connection is possible
   {
-    // ...
+    ink.test();
   }
   virtual ~Inky() {
     // ...

@@ -3,7 +3,7 @@
  * Open Source under the MIT License - see LICENSE in the project's root folder
  */
 
-#define FEATHER_M0_BTLE // comment this line to disable Feather Bluetooth
+// #define FEATHER_M0_BTLE // comment this line to disable Feather Bluetooth
 
 #ifdef FEATHER_M0_BTLE
 #include "Adafruit_BluefruitLE_SPI.h"
@@ -155,6 +155,7 @@ const char * BTCommander::name() const {
 }
 
 void BTCommander::update() {
+#ifdef FEATHER_M0_BTLE
   while (get_bytes()) {
     const char * ptr = m_ble->buffer;
 
@@ -162,4 +163,5 @@ void BTCommander::update() {
       push(*ptr++);
     }
   }
+#endif
 }
