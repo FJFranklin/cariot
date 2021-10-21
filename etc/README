@@ -1,0 +1,19 @@
+# Change to home directory /home/pi
+cd
+# Get the source
+git clone https://github.com/FJFranklin/cariot.git
+# Create a folder where the log files will be saved
+cd cariot/www
+mkdir logs
+# Install the mosquitto MQTT broker, and uild the logger
+cd ../src/
+sudo apt-get install libmosquitto-dev mosquitto
+c++ -o ../car *.cc -lmosquitto
+# Add system configuration files and (re)start services
+cd ../etc/
+sudo cp mosquitto-cariot.conf /etc/mosquitto/conf.d/mosquitto.conf
+sudo systemctl stop mosquitto
+sudo systemctl start mosquitto
+sudo cp cariot.service /lib/systemd/system/
+sudo systemctl enable cariot
+sudo systemctl start cariot

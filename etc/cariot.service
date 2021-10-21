@@ -8,7 +8,7 @@ Type=simple
 Restart=always
 RestartSec=1
 User=pi
-ExecStart=/home/pi/cariot/car
+ExecStart=/home/pi/cariot/car --logger
 
 [Install]
 WantedBy=multi-user.target
