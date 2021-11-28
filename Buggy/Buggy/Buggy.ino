@@ -201,7 +201,13 @@ public:
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
-    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 6)); // double blink per second, or triple if reporting
+    int third = 6;
+#ifdef ENABLE_GPS
+    if (gps->available()) {
+      third = 4;
+    }
+#endif
+    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == third)); // double blink per second, or triple if reporting
 
 #ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
