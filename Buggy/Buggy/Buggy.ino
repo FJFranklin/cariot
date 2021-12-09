@@ -1,4 +1,8 @@
 /* -*- mode: c++ -*-
+ * 
+ * Copyright 2020-21 Francis James Franklin
+ * 
+ * Open Source under the MIT License - see LICENSE in the project's root folder
  */
 
 #include "config.hh"
@@ -47,6 +51,7 @@ private:
 
   elapsedMicros report;
   bool bReporting;
+  bool bReportGenerated;
 
 public:
   Buggy() :
@@ -68,7 +73,8 @@ public:
 #endif
     J(0),
     report(0),
-    bReporting(false)
+    bReporting(false),
+    bReportGenerated(false)
   {
 #ifdef ENABLE_GPS
     gps->begin(9600);
@@ -144,12 +150,27 @@ public:
     switch(code) {
     case 'f':
       MSpeed = (value > 127 ? 127 : value);
+      TB_Params.target = (float) MSpeed / 10.0;
       break;
     case 'b':
       MSpeed = (value > 127 ? -127 : -value);
+      TB_Params.target = (float) MSpeed / 10.0;
       break;
     case 'x':
       MSpeed = 0;
+      TB_Params.target = 0.0;
+      break;
+    case 'S':
+      TB_Params.slip = (float) value / 100.0;
+      break;
+    case 'P':
+      MC_Params.P = (float) value / 100.0;
+      break;
+    case 'I':
+      MC_Params.I = (float) value / 100.0;
+      break;
+    case 'D':
+      MC_Params.D = (float) value / 100.0;
       break;
     case 'R':
       bReporting = value;
@@ -166,8 +187,10 @@ public:
 
   virtual void every_10ms() { // runs once every 10ms, on average
 #ifdef APP_MOTORCONTROL
+#ifndef ENABLE_PID
+    /* Default behaviour: No PID control, just a linear smoothing of speed transition
+     */
     int M1 = M1_actual;
-    int M2 = M2_actual;
 
     if (M1 < MSpeed) {
       ++M1;
@@ -175,6 +198,11 @@ public:
     if (M1 > MSpeed) {
       --M1;
     }
+    if (M1 != M1_actual) {
+      s_roboclaw_set_M1(M1);
+    }
+
+    int M2 = M2_actual;
 
     if (M2 < MSpeed) {
       ++M2;
@@ -182,10 +210,10 @@ public:
     if (M2 > MSpeed) {
       --M2;
     }
-
-    if ((M1 != M1_actual) || (M2 != M2_actual)) {
-      s_roboclaw_set(M1, M2);
+    if (M2 != M2_actual) {
+      s_roboclaw_set_M2(M2);
     }
+#endif // ! ENABLE_PID
 #endif
 #ifdef ENABLE_LORA
     if (lora) { // important: housekeeping - check for incoming messages
@@ -197,17 +225,33 @@ public:
     E2.sync();
     E3.sync();
     E4.sync();
+
+    const float scaling = PI * WHEEL_DIAMETER * 3.6;
+
+    TB_Params.actual_FL = E1.latest() * scaling; // * * * FIXME - which encoders correspond to which wheels? * * *
+    TB_Params.actual_BL = E2.latest() * scaling; // Note: Important: Check! Is +ve forwards on the left and backwards on the right?
+    TB_Params.actual_FR = E3.latest() * scaling; // Also FIXME: This should be the only place .latest() is used. Tidy up instances below.
+    TB_Params.actual_BR = E4.latest() * scaling;
+
+    TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
+
+#ifdef ENABLE_PID
+    /* We're going to need two PID control systems, I think, one for the Track Buggy speed, and one for motor speed; but for now...
+     */
+    MC_Left.update(TB_Params.target, TB_Params.actual_BL, 10);
+    MC_Right.update(-TB_Params.target, TB_Params.actual_FR, 10); // Note: Does the wiring allow this? If the motors flip direction, do the encoders also flip?
+#endif // ENABLE_PID
 #endif
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
-    int third = 6;
-#ifdef ENABLE_GPS
-    if (gps->available()) {
-      third = 4;
+    if (tenth == 4) {
+      // If actually generating output data (the GPS needs to be active for this) add an extra blink; should be dash-dot-dash-dot
+      digitalWrite(LED_BUILTIN, bReportGenerated);
+      bReportGenerated = false;
+    } else {
+      digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 9)); // double blink per second, or long single if in reporting mode
     }
-#endif
-    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == third)); // double blink per second, or triple if reporting
 
 #ifdef APP_MOTORCONTROL
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
@@ -340,6 +384,8 @@ public:
 #endif
 
     s0.ui();
+
+    bReportGenerated = true;
   }
 
   virtual void tick() {

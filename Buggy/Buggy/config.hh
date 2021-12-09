@@ -9,6 +9,7 @@
 #include <Arduino.h>
 
 //#define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
+//#define ENABLE_PID        // PID motor control - experimental
 //#define ENABLE_BLUETOOTH  // required for Bluetooth; comment to disable
 //#define ENABLE_LORA       // required for LoRa; comment to disable
 //#define ENABLE_GPS        // required for GPS; comment to disable
@@ -40,6 +41,7 @@
 #define ENABLE_GPS
 #define ENABLE_ENCODERS
 #define ENABLE_ENC_CLASS
+#define ENABLE_PID
 #endif
 
 #define LORA_ID_NONE_ALL  42
