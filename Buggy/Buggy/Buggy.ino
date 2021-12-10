@@ -27,7 +27,9 @@
 class Joy;
 #endif
 
+#ifdef APP_MOTORCONTROL
 #include "Claw.hh"
+#endif
 
 class Buggy : public Timer, public Commander::Responder {
 private:
@@ -172,6 +174,15 @@ public:
     case 'D':
       MC_Params.D = (float) value / 100.0;
       break;
+    case 'Q':
+      TB_Params.P = (float) value / 100.0;
+      break;
+    case 'J':
+      TB_Params.I = (float) value / 100.0;
+      break;
+    case 'E':
+      TB_Params.D = (float) value / 100.0;
+      break;
     case 'R':
       bReporting = value;
       break;
@@ -236,10 +247,7 @@ public:
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
 #ifdef ENABLE_PID
-    /* We're going to need two PID control systems, I think, one for the Track Buggy speed, and one for motor speed; but for now...
-     */
-    MC_Left.update(TB_Params.target, TB_Params.actual_BL, 10);
-    MC_Right.update(-TB_Params.target, TB_Params.actual_FR, 10); // Note: Does the wiring allow this? If the motors flip direction, do the encoders also flip?
+    s_buggy_update(10); // see Claw.hh
 #endif // ENABLE_PID
 #endif
   }

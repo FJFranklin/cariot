@@ -26,7 +26,11 @@ struct tb_params {
   float actual_BL; // back  left  (powered)
   float actual_FR; // front right (powered)
   float actual_BR; // back  right (non-powered)
-} TB_Params = { 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+
+  float P; // Use Q/J/E commands to set these values
+  float I;
+  float D;
+} TB_Params = { 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0 };
 
 #ifdef ENABLE_ROBOCLAW
 #include <RoboClaw.h>
@@ -139,5 +143,37 @@ public:
 
 MC MC_Left(&s_roboclaw_set_M1);  // Check: Is M1 on the left?
 MC MC_Right(&s_roboclaw_set_M2); // Check: Is M2 on the right?
+
+void s_buggy_update(float dt_ms) {
+  /* We need two PID control systems: this one for the Track Buggy speed, and a separate one for each motor speed
+   */
+  static float kmh_error_old = 0;
+  static float kmh_error_integral = 0;
+
+  float kmh_error = TB_Params.target - TB_Params.actual;
+  float error_difference = (kmh_error - kmh_error_old) / dt_ms;
+
+  kmh_error_integral += ((kmh_error + kmh_error_old) / 2) * dt_ms;
+  kmh_error_old = kmh_error;
+
+  float pwm_estimate = TB_Params.P * kmh_error
+                     + TB_Params.I * kmh_error_integral
+                     + TB_Params.D * error_difference;
+
+  /* Some slip between the powered wheels and the rails is inevitable; need to control it, however
+   */
+  if (pwm_estimate > TB_Params.actual + TB_Params.slip) {
+    pwm_estimate = TB_Params.actual + TB_Params.slip;
+  } else if (pwm_estimate < TB_Params.actual - TB_Params.slip) {
+    pwm_estimate = TB_Params.actual - TB_Params.slip;
+  }
+
+  /* If the non-powered wheels are kept stationary, then TB_Params.actual will be zero.
+   * If, also, TB_Params.P/I/D = 1/0/0, and TB_Params.slip > TB_Params.target, then 
+   * pwm_estimate = TB_Params.target and the pure motor response can be recorded.
+   */
+  MC_Left.update(pwm_estimate, TB_Params.actual_BL, dt_ms);
+  MC_Right.update(pwm_estimate, TB_Params.actual_FR, dt_ms);
+}
 
 #endif /* !cariot_claw_hh */
