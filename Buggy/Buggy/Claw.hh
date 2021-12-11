@@ -162,14 +162,16 @@ void s_buggy_update(float dt_ms) {
 
   /* Some slip between the powered wheels and the rails is inevitable; need to control it, however
    */
-  if (pwm_estimate > TB_Params.actual + TB_Params.slip) {
-    pwm_estimate = TB_Params.actual + TB_Params.slip;
-  } else if (pwm_estimate < TB_Params.actual - TB_Params.slip) {
-    pwm_estimate = TB_Params.actual - TB_Params.slip;
+  if (TB_Params.slip > 0) { // If slip is set to zero, don't apply any limits
+    if (pwm_estimate > TB_Params.actual + TB_Params.slip) {
+      pwm_estimate = TB_Params.actual + TB_Params.slip;
+    } else if (pwm_estimate < TB_Params.actual - TB_Params.slip) {
+      pwm_estimate = TB_Params.actual - TB_Params.slip;
+    }
   }
 
   /* If the non-powered wheels are kept stationary, then TB_Params.actual will be zero.
-   * If, also, TB_Params.P/I/D = 1/0/0, and TB_Params.slip > TB_Params.target, then 
+   * If, also, TB_Params.P/I/D = 1/0/0, and TB_Params.slip = 0 (to disable), then 
    * pwm_estimate = TB_Params.target and the pure motor response can be recorded.
    */
   MC_Left.update(pwm_estimate, TB_Params.actual_BL, dt_ms);

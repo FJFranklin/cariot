@@ -52,7 +52,7 @@ private:
   Joy *J;
 
   elapsedMicros report;
-  bool bReporting;
+  unsigned char reportMode;
   bool bReportGenerated;
 
 public:
@@ -75,7 +75,7 @@ public:
 #endif
     J(0),
     report(0),
-    bReporting(false),
+    reportMode(0),
     bReportGenerated(false)
   {
 #ifdef ENABLE_GPS
@@ -96,7 +96,7 @@ public:
     // ...
   }
   bool reporting() {
-    return bReporting /* || digitalRead(2) */;
+    return (reportMode == 1) /* || digitalRead(2) */;
   }
 
   virtual void notify(Commander * C, const char * str) {
@@ -184,7 +184,7 @@ public:
       TB_Params.D = (float) value / 100.0;
       break;
     case 'R':
-      bReporting = value;
+      reportMode = (unsigned char) (value & 0xFF); // 0 for none; 1 for GPS-triggered reporting; 2 for buggy 'actual' at 10ms intervalsb
       break;
     default:
       break;
@@ -246,6 +246,12 @@ public:
 
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
+    if (reportMode == 2) {
+      char buf[16];
+      snprintf(buf, 16, "%.6f", TB_Params.actual);
+      s0.ui_print(buf);
+      s0.ui();
+    }
 #ifdef ENABLE_PID
     s_buggy_update(10); // see Claw.hh
 #endif // ENABLE_PID
@@ -254,11 +260,11 @@ public:
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
     if (tenth == 4) {
-      // If actually generating output data (the GPS needs to be active for this) add an extra blink; should be dash-dot-dash-dot
-      digitalWrite(LED_BUILTIN, bReportGenerated);
+      // If actually generating output data (the GPS needs to be active for this if in mode 1) add an extra blink; should be dash-dot-dash-dot
+      digitalWrite(LED_BUILTIN, bReportGenerated || (reportMode == 2));
       bReportGenerated = false;
     } else {
-      digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 9)); // double blink per second, or long single if in reporting mode
+      digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 9)); // double blink per second, or long single if in reporting mode 1
     }
 
 #ifdef APP_MOTORCONTROL
