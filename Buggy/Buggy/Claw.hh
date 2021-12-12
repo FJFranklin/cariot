@@ -75,12 +75,14 @@ static void s_roboclaw_set_M1(int M1) {
     if (M1 < -127) {
       M1 = -127;
     }
-    roboclaw.BackwardM1(address, (uint8_t) (-M1));
+    if (roboclaw.available())
+      roboclaw.BackwardM1(address, (uint8_t) (-M1));
   } else {
     if (M1 > 127) {
       M1 = 127;
     }
-    roboclaw.ForwardM1(address, (uint8_t) M1);
+    if (roboclaw.available())
+      roboclaw.ForwardM1(address, (uint8_t) M1);
   }
 #endif
   M1_actual = M1;
@@ -93,12 +95,14 @@ static void s_roboclaw_set_M2(int M2) {
     if (M2 < -127) {
       M2 = -127;
     }
-    roboclaw.BackwardM2(address, (uint8_t) (-M2));
+    if (roboclaw.available())
+      roboclaw.BackwardM2(address, (uint8_t) (-M2));
   } else {
     if (M2 > 127) {
       M2 = 127;
     }
-    roboclaw.ForwardM2(address, (uint8_t) M2);
+    if (roboclaw.available())
+      roboclaw.ForwardM2(address, (uint8_t) M2);
   }
 #endif
   M2_actual = M2;

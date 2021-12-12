@@ -247,8 +247,8 @@ public:
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
     if (reportMode == 2) {
-      char buf[16];
-      snprintf(buf, 16, "%.6f", TB_Params.actual);
+      char buf[40];
+      snprintf(buf, 40, "%6.2f %6.2f %6.2f %6.2f %6.2f", TB_Params.actual_FL, TB_Params.actual_BL, TB_Params.actual_FR, TB_Params.actual_BR, TB_Params.actual);
       s0.ui_print(buf);
       s0.ui();
     }
