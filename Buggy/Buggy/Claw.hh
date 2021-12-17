@@ -8,9 +8,6 @@
 
 int MSpeed = 0; // Target setting for (both) motors; range is -127..127
 
-int M1_actual = 0;
-int M2_actual = 0;
-
 struct mc_params {
   float P;
   float I;
@@ -62,50 +59,72 @@ static SoftwareSerial * config_serial() {
 RoboClaw roboclaw(config_serial(), 10000);
 #endif
 
-static void s_roboclaw_init() {
+static bool s_claw_writable = false;
+
+static bool s_roboclaw_init() {
+  const uint8_t address = 0x80;
 #ifdef ENABLE_ROBOCLAW
   roboclaw.begin(38400);
+  bool bM1 = roboclaw.ForwardM1(address, 0);
+  bool bM2 = roboclaw.ForwardM2(address, 0);
+  s_claw_writable = bM1 && bM2;
 #endif
+  if (!s_claw_writable) {
+    Serial.println("RoboClaw not connected - disabling motor control.");
+  }
+  return s_claw_writable;
 }
+
+static int M1_actual = 0;
+static bool M1_enable = true;
 
 static void s_roboclaw_set_M1(int M1) {
   const uint8_t address = 0x80;
+  bool bSuccess = false;
+  if (!M1_enable) M1 = 0;
 #ifdef ENABLE_ROBOCLAW
+//Serial.println(M1);
   if (M1 < 0) {
     if (M1 < -127) {
       M1 = -127;
     }
-    if (roboclaw.available())
-      roboclaw.BackwardM1(address, (uint8_t) (-M1));
+    if (s_claw_writable && (M1 != M1_actual))
+      bSuccess = roboclaw.BackwardM1(address, (uint8_t) (-M1));
   } else {
     if (M1 > 127) {
       M1 = 127;
     }
-    if (roboclaw.available())
-      roboclaw.ForwardM1(address, (uint8_t) M1);
+    if (s_claw_writable && (M1 != M1_actual))
+      bSuccess = roboclaw.ForwardM1(address, (uint8_t) M1);
   }
 #endif
-  M1_actual = M1;
+  if (bSuccess) M1_actual = M1;
 }
+
+static int M2_actual = 0;
+static bool M2_enable = true;
 
 static void s_roboclaw_set_M2(int M2) {
   const uint8_t address = 0x80;
+  bool bSuccess = false;
+  if (!M2_enable) M2 = 0;
 #ifdef ENABLE_ROBOCLAW
+//Serial.println(M2);
   if (M2 < 0) {
     if (M2 < -127) {
       M2 = -127;
     }
-    if (roboclaw.available())
-      roboclaw.BackwardM2(address, (uint8_t) (-M2));
+    if (s_claw_writable && (M2 != M2_actual))
+      bSuccess = roboclaw.BackwardM2(address, (uint8_t) (-M2));
   } else {
     if (M2 > 127) {
       M2 = 127;
     }
-    if (roboclaw.available())
-      roboclaw.ForwardM2(address, (uint8_t) M2);
+    if (s_claw_writable && (M2 != M2_actual))
+      bSuccess = roboclaw.ForwardM2(address, (uint8_t) M2);
   }
 #endif
-  M2_actual = M2;
+  if (bSuccess) M2_actual = M2;
 }
 
 class MC {
@@ -140,13 +159,13 @@ public:
     float pwm_estimate = MC_Params.P * kmh_error
                        + MC_Params.I * kmh_error_integral
                        + MC_Params.D * error_difference;
-
+ // Serial.print(pwm_estimate);
     (*m_set) ((int) pwm_estimate);
   }
 };
 
-MC MC_Left(&s_roboclaw_set_M1);  // Check: Is M1 on the left?
-MC MC_Right(&s_roboclaw_set_M2); // Check: Is M2 on the right?
+MC MC_Left(&s_roboclaw_set_M2);  // M2 on the left
+MC MC_Right(&s_roboclaw_set_M1); // M1 on the right
 
 void s_buggy_update(float dt_ms) {
   /* We need two PID control systems: this one for the Track Buggy speed, and a separate one for each motor speed
@@ -179,7 +198,9 @@ void s_buggy_update(float dt_ms) {
    * pwm_estimate = TB_Params.target and the pure motor response can be recorded.
    */
   MC_Left.update(pwm_estimate, TB_Params.actual_BL, dt_ms);
+//Serial.print(' ');
   MC_Right.update(pwm_estimate, TB_Params.actual_FR, dt_ms);
+//Serial.println();
 }
 
 #endif /* !cariot_claw_hh */

@@ -5,6 +5,7 @@
 
 #include "config.hh"
 
+#ifdef ENABLE_LORA
 #ifdef FEATHER_M0_LORA
 #include <SPI.h>
 #include <RH_RF95.h> // RadioHead library
@@ -319,3 +320,4 @@ void LoRaCommander::update(bool flush_output) {
   }
 #endif
 }
+#endif // ENABLE_LORA

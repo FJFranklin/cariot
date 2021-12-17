@@ -162,6 +162,15 @@ public:
       MSpeed = 0;
       TB_Params.target = 0.0;
       break;
+    case 'l':
+      M2_enable = value ? true : false;
+      break;
+    case 'r':
+      M1_enable = value ? true : false;
+      break;
+    case 'c':
+      if (value == 1) s_roboclaw_init(); // for testing only
+      break;
     case 'S':
       TB_Params.slip = (float) value / 100.0;
       break;
@@ -209,9 +218,7 @@ public:
     if (M1 > MSpeed) {
       --M1;
     }
-    if (M1 != M1_actual) {
-      s_roboclaw_set_M1(M1);
-    }
+    s_roboclaw_set_M1(M1); // right
 
     int M2 = M2_actual;
 
@@ -221,8 +228,13 @@ public:
     if (M2 > MSpeed) {
       --M2;
     }
-    if (M2 != M2_actual) {
-      s_roboclaw_set_M2(M2);
+    s_roboclaw_set_M2(M2); // left
+
+    if ((reportMode == 3) && (MSpeed || M1_actual || M2_actual)) {
+      char buf[40];
+      snprintf(buf, 40, "%d %d/%d %d/%d", MSpeed, M1, M1_actual, M2, M2_actual);
+      s0.ui_print(buf);
+      s0.ui();
     }
 #endif // ! ENABLE_PID
 #endif
@@ -246,7 +258,7 @@ public:
 
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
-    if (reportMode == 2) {
+    if ((reportMode == 2) && (TB_Params.actual_FL || TB_Params.actual_BL || TB_Params.actual_FR || TB_Params.actual_BR || TB_Params.actual)) {
       char buf[40];
       snprintf(buf, 40, "%6.2f %6.2f %6.2f %6.2f %6.2f", TB_Params.actual_FL, TB_Params.actual_BL, TB_Params.actual_FR, TB_Params.actual_BR, TB_Params.actual);
       s0.ui_print(buf);
@@ -462,7 +474,8 @@ void setup() {
   }
   Serial2.begin(115200);
 
-  s_roboclaw_init();    // Setup RoboClaw
+  s_roboclaw_init(); // Setup RoboClaw
+
 #ifdef ENABLE_ENC_CLASS
   E1.init(E1_ChA, E1_ChB, ENCODER_PPR, false); // set up encoder 1
   E2.init(E2_ChA, E2_ChB, ENCODER_PPR, false); // set up encoder 2
