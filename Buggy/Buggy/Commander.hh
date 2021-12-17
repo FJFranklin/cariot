@@ -10,6 +10,9 @@
 
 class Commander {
 public:
+  static float unpack754_32(uint32_t i);
+  static uint32_t pack754_32(float f);
+
   class Responder {
   public:
     virtual void notify(Commander * C, const char * str) = 0;
